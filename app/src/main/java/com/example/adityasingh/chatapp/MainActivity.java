@@ -30,6 +30,7 @@ import android.widget.ProgressBar;
 
 import android.widget.Toast;
 
+import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.firebase.ui.auth.AuthUI;
 import com.google.firebase.auth.FirebaseAuth;
@@ -82,6 +83,7 @@ public class MainActivity extends AppCompatActivity
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
@@ -176,16 +178,7 @@ public class MainActivity extends AppCompatActivity
                                          // User is signed in
                                      onSignedInInitialize(user.getDisplayName());
                                      } else {
-                                        // User is signed out
-//                                                startActivityForResult(
-//                                                                AuthUI.getInstance()
-//                                                                               .createSignInIntentBuilder()
-//                                                                .setIsSmartLockEnabled(false)
-//                                                                .setProviders(
-//                                                                        AuthUI.EMAIL_PROVIDER,
-//                                                                        AuthUI.GOOGLE_PROVIDER)
-//                                                                .build(),
-//                                                        RC_SIGN_IN);
+
                                      onSignedOutCleanup();
                                      List<AuthUI.IdpConfig> providers = Arrays.asList(
                                              new AuthUI.IdpConfig.Builder(AuthUI.EMAIL_PROVIDER).build(),
@@ -204,49 +197,59 @@ public class MainActivity extends AppCompatActivity
         };
     }
 
+
     @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-                super.onActivityResult(requestCode, resultCode, data);
-                if (requestCode == RC_SIGN_IN) {
-                        if (resultCode == RESULT_OK) {
-                                // Sign-in succeeded, set up the UI
-                                        Toast.makeText(this, "Signed in!", Toast.LENGTH_SHORT).show();
-                            } else if (resultCode == RESULT_CANCELED) {
-                                // Sign in was canceled by the user, finish the activity
-                                        Toast.makeText(this, "Sign in canceled", Toast.LENGTH_SHORT).show();
-                                finish();
-                            } else if(requestCode==RC_PHOTO_PICKER && resultCode==RESULT_OK) {
-                            Uri selectedImageUri= data.getData();
-                            StorageReference photoRef= mChatPhotosStorageReference.child(selectedImageUri.getLastPathSegment());
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
 
-                            // Upload file to Firebase Storage
-                                        photoRef.putFile(selectedImageUri)
-                                                        .addOnSuccessListener(this, new OnSuccessListener<UploadTask.TaskSnapshot>() {
-                                            public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
-                                                                // When the image has successfully uploaded, we get its download URL
-                                                                        Uri downloadUrl = taskSnapshot.getDownloadUrl();
-
-                                                                        // Set the download URL to the message box, so that the user can send it to the database
-                                                                                Message message = new Message(null, mUsername, downloadUrl.toString());
-                                                                mMessagesDatabaseReference.push().setValue(message);
-                                                           }
-                                        });
-                        }
-                    }
+        if (requestCode == RC_SIGN_IN) {
+            if (resultCode == RESULT_OK) {
+                Toast.makeText(this, "Signed in!", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Sign in cancelled", Toast.LENGTH_SHORT).show();
+                finish();
             }
+        } else if (requestCode == RC_PHOTO_PICKER) {
+            if (resultCode == RESULT_OK) {
+                Uri selectedImageUri = data.getData();
+                if (selectedImageUri != null) {
+                    StorageReference photoRef =
+                            mChatPhotosStorageReference.child(selectedImageUri.getLastPathSegment());
+
+                    UploadTask uploadTask = photoRef.putFile(selectedImageUri);
+
+                    // Register observers to listen for when the download is done or if it fails
+                    uploadTask.addOnFailureListener(new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception exception) {
+                            // Handle unsuccessful uploads
+                        }
+                    }).addOnSuccessListener(new OnSuccessListener<UploadTask.TaskSnapshot>() {
+                        @Override
+                        public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
+                            // taskSnapshot.getMetadata() contains file metadata such as size, content-type, and download URL.
+                            Uri downloadUrl = taskSnapshot.getDownloadUrl();
+                            Message message = new Message(null, mUsername, downloadUrl.toString());
+                            mMessagesDatabaseReference.push().setValue(message);
+                        }
+                    });
+                }
+            }
+        }
+    }
 
     @Override
     protected void onResume() {
-                super.onResume();
-                mFirebaseAuth.addAuthStateListener(mAuthStateListener);
-            }
+        super.onResume();
+        mFirebaseAuth.addAuthStateListener(mAuthStateListener);
+    }
 
     @Override
     protected void onPause() {
-                super.onPause();
-                if (mAuthStateListener != null) {
-                        mFirebaseAuth.removeAuthStateListener(mAuthStateListener);
-                    }
+        super.onPause();
+        if (mAuthStateListener != null) {
+            mFirebaseAuth.removeAuthStateListener(mAuthStateListener);
+        }
 
         mMessageAdapter.clear();
         detachDatabaseReadListener();
@@ -261,23 +264,20 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
 
+        int id = item.getItemId();
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
             return true;
         }
 
         switch (item.getItemId()) {
-                        case R.id.sign_out_menu:
-                                AuthUI.getInstance().signOut(this);
-                                return true;
-                        default:
-                                return super.onOptionsItemSelected(item);
-                    }
+            case R.id.sign_out_menu:
+                AuthUI.getInstance().signOut(this);
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+        }
     }
 
     private void onSignedInInitialize(String username) {
@@ -285,36 +285,36 @@ public class MainActivity extends AppCompatActivity
                 attachDatabaseReadListener();
             }
 
-            private void onSignedOutCleanup() {
-                mUsername = ANONYMOUS;
-                mMessageAdapter.clear();
-                detachDatabaseReadListener();
-            }
+    private void onSignedOutCleanup() {
+        mUsername = ANONYMOUS;
+        mMessageAdapter.clear();
+        detachDatabaseReadListener();
+    }
 
-            private void attachDatabaseReadListener() {
-                if (mChildEventListener == null) {
-                        mChildEventListener = new ChildEventListener() {
+    private void attachDatabaseReadListener() {
+        if (mChildEventListener == null) {
+            mChildEventListener = new ChildEventListener() {
                 @Override
                 public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-                                        Message message = dataSnapshot.getValue(Message.class);
-                                        mMessageAdapter.add(message);
-                                    }
+                    Message message = dataSnapshot.getValue(Message.class);
+                    mMessageAdapter.add(message);
+                }
 
-                        public void onChildChanged(DataSnapshot dataSnapshot, String s) {}
+                public void onChildChanged(DataSnapshot dataSnapshot, String s) {}
                 public void onChildRemoved(DataSnapshot dataSnapshot) {}
                 public void onChildMoved(DataSnapshot dataSnapshot, String s) {}
                 public void onCancelled(DatabaseError databaseError) {}
             };
-                        mMessagesDatabaseReference.addChildEventListener(mChildEventListener);
-                    }
-            }
+            mMessagesDatabaseReference.addChildEventListener(mChildEventListener);
+        }
+    }
 
-            private void detachDatabaseReadListener() {
-                if (mChildEventListener != null) {
-                        mMessagesDatabaseReference.removeEventListener(mChildEventListener);
-                        mChildEventListener = null;
-                    }
-            }
+    private void detachDatabaseReadListener() {
+        if (mChildEventListener != null) {
+            mMessagesDatabaseReference.removeEventListener(mChildEventListener);
+            mChildEventListener = null;
+        }
+    }
 
     @Override
     public void onBackPressed() {

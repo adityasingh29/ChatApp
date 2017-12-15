@@ -1,5 +1,7 @@
 package com.example.adityasingh.chatapp;
 
+import java.util.Date;
+
 /**
  * Created by adityasingh on 10/12/17.
  */
@@ -8,6 +10,7 @@ public class Message {
     private String text;
     private String name;
     private String photoUrl;
+    private long messageTime;
 
     public Message() {
     }
@@ -16,6 +19,7 @@ public class Message {
         this.text = text;
         this.name = name;
         this.photoUrl = photoUrl;
+        messageTime= new Date().getTime();
     }
 
     public String getText() {
@@ -41,4 +45,8 @@ public class Message {
     public void setPhotoUrl(String photoUrl) {
         this.photoUrl = photoUrl;
     }
+
+    public long getTime(){return messageTime;}
+
+    public void setMessageTime(long messageTime){this.messageTime=messageTime;}
 }
