@@ -47,9 +47,7 @@ public class MessageAdapter extends ArrayAdapter<Message> {
             messageTextView.setText(message.getText());
         }
         authorTextView.setText(message.getName());
-//        timeTextView.setText((int) message.getTime());
-        timeTextView.setText(DateFormat.format("dd-MM-yyyy (HH:mm:ss)",
-                message.getTime()));
+        timeTextView.setText(DateFormat.format("dd-MM-yyyy (HH:mm:ss)", message.getMessageTime()));
 
         return convertView;
     }

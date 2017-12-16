@@ -1,11 +1,14 @@
 package com.example.adityasingh.chatapp;
 
+import android.content.ActivityNotFoundException;
 import android.net.Uri;
 import android.os.Bundle;
 import android.content.Intent;
+import android.speech.RecognizerIntent;
 import android.support.annotation.NonNull;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
+import android.util.Log;
 import android.view.View;
 import android.support.design.widget.NavigationView;
 import android.support.v4.view.GravityCompat;
@@ -49,24 +52,26 @@ import com.google.firebase.storage.UploadTask;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity
-        implements NavigationView.OnNavigationItemSelectedListener {
+public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
 
     public static final String ANONYMOUS = "anonymous";
-    public static final int DEFAULT_MSG_LENGTH_LIMIT = 1000;
+    public static final int DEFAULT_MSG_LENGTH_LIMIT = 500;
 
     public static final int RC_SIGN_IN = 1;
     private static final int RC_PHOTO_PICKER = 2;
+    private final int REQ_CODE_SPEECH_INPUT = 100;
 
     private ListView mMessageListView;
     private MessageAdapter mMessageAdapter;
     private ProgressBar mProgressBar;
     private ImageButton mPhotoPickerButton;
     private EditText mMessageEditText;
-    private Button mSendButton;
+    private ImageButton mSendButton;
+    private ImageButton mVoiceButton;
 
     private String mUsername;
 
@@ -87,19 +92,6 @@ public class MainActivity extends AppCompatActivity
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
-        ActionBarDrawerToggle toggle = new ActionBarDrawerToggle(
-                this, drawer, toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close);
-        drawer.addDrawerListener(toggle);
-        toggle.syncState();
-
-        NavigationView navigationView = (NavigationView) findViewById(R.id.nav_view);
-        navigationView.setNavigationItemSelectedListener(this);
-
-
-
-
-
         mUsername = ANONYMOUS;
 
         mFirebaseDatabase=FirebaseDatabase.getInstance();
@@ -114,7 +106,8 @@ public class MainActivity extends AppCompatActivity
         mMessageListView = (ListView) findViewById(R.id.messageListView);
         mPhotoPickerButton = (ImageButton) findViewById(R.id.photoPickerButton);
         mMessageEditText = (EditText) findViewById(R.id.messageEditText);
-        mSendButton = (Button) findViewById(R.id.sendButton);
+        mSendButton = (ImageButton) findViewById(R.id.sendButton);
+        mVoiceButton = (ImageButton) findViewById(R.id.voiceButton);
 
         // Initialize message ListView and its adapter
         List<Message> Messages = new ArrayList<>();
@@ -160,15 +153,20 @@ public class MainActivity extends AppCompatActivity
         mSendButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // TODO: Send messages on click
 
                 Message message=new Message(mMessageEditText.getText().toString(),mUsername,null);
                 mMessagesDatabaseReference.push().setValue(message);
-                // Clear input box
+
                 mMessageEditText.setText("");
             }
         });
 
+        mVoiceButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                promptSpeechInput();
+            }
+        });
 
         mAuthStateListener = new FirebaseAuth.AuthStateListener() {
             @Override
@@ -190,13 +188,27 @@ public class MainActivity extends AppCompatActivity
                                                      .createSignInIntentBuilder()
                                                      .setIsSmartLockEnabled(false)
                                                      .setProviders(providers)
-                                                     .build(),
-                                             RC_SIGN_IN);
+                                                     .build(), RC_SIGN_IN);
                                     }
                             }
         };
     }
 
+    private void promptSpeechInput() {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
+                "Speech prompted");
+        try {
+            startActivityForResult(intent, REQ_CODE_SPEECH_INPUT);
+        } catch (ActivityNotFoundException a) {
+            Toast.makeText(getApplicationContext(),
+                    "Speech not supported",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -227,13 +239,25 @@ public class MainActivity extends AppCompatActivity
                     }).addOnSuccessListener(new OnSuccessListener<UploadTask.TaskSnapshot>() {
                         @Override
                         public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
-                            // taskSnapshot.getMetadata() contains file metadata such as size, content-type, and download URL.
+
                             Uri downloadUrl = taskSnapshot.getDownloadUrl();
                             Message message = new Message(null, mUsername, downloadUrl.toString());
                             mMessagesDatabaseReference.push().setValue(message);
                         }
                     });
+                    Toast.makeText(this, "Please wait for the photo to load", Toast.LENGTH_LONG).show();
                 }
+            }
+        }
+        else if (requestCode == REQ_CODE_SPEECH_INPUT) {
+            if (resultCode == RESULT_OK && null != data) {
+                //Speech recognizer
+                ArrayList<String> result = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+
+                Message message = new Message(result.get(0), mUsername, null);
+                mMessagesDatabaseReference.push().setValue(message);
+
+                mMessageEditText.setText("");
             }
         }
     }
@@ -265,16 +289,15 @@ public class MainActivity extends AppCompatActivity
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
 
-        int id = item.getItemId();
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
-        }
-
         switch (item.getItemId()) {
             case R.id.sign_out_menu:
                 AuthUI.getInstance().signOut(this);
+                Toast.makeText(this,"Signed out!",Toast.LENGTH_SHORT);
                 return true;
+            case R.id.sendFeedback:
+                 sendmail();
+            case R.id.action_settings:
+                Toast.makeText(this,"Not working currently",Toast.LENGTH_SHORT);
             default:
                 return super.onOptionsItemSelected(item);
         }
@@ -316,38 +339,25 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    @Override
-    public void onBackPressed() {
-        DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
-        if (drawer.isDrawerOpen(GravityCompat.START)) {
-            drawer.closeDrawer(GravityCompat.START);
-        } else {
-            super.onBackPressed();
+    public void sendmail(){
+        Log.i("Send mail","");
+        String[] TO={"adityasingh.29may@gmail.com"};
+        String[] CC={""};
+        Intent mailIntent=new Intent(Intent.ACTION_SEND);
+        mailIntent.setData(Uri.parse("mailto:"));
+        mailIntent.setType("text/plain");
+        mailIntent.putExtra(Intent.EXTRA_EMAIL,TO);
+        mailIntent.putExtra(Intent.EXTRA_CC,CC);
+        mailIntent.putExtra(Intent.EXTRA_SUBJECT,"Feedback Regarding ChatApp");
+        mailIntent.putExtra(Intent.EXTRA_TEXT,"New Message");
+        try {
+//            startActivity(Intent.createChooser(mailIntent,"Send mail.."));
+            startActivity(mailIntent);
+            finish();
+            Log.i("Finished sending mail","");
         }
-    }
-
-    @SuppressWarnings("StatementWithEmptyBody")
-    @Override
-    public boolean onNavigationItemSelected(MenuItem item) {
-        // Handle navigation view item clicks here.
-        int id = item.getItemId();
-
-        if (id == R.id.nav_camera) {
-            // Handle the camera action
-        } else if (id == R.id.nav_gallery) {
-
-        } else if (id == R.id.nav_slideshow) {
-
-        } else if (id == R.id.nav_manage) {
-
-        } else if (id == R.id.nav_share) {
-
-        } else if (id == R.id.nav_send) {
-
+        catch (android.content.ActivityNotFoundException e){
+            Toast.makeText(this,"No email client installed",Toast.LENGTH_SHORT).show();
         }
-
-        DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
-        drawer.closeDrawer(GravityCompat.START);
-        return true;
     }
 }

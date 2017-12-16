@@ -1,6 +1,9 @@
 package com.example.adityasingh.chatapp;
 
+import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Calendar;
+import java.util.TimeZone;
 
 /**
  * Created by adityasingh on 10/12/17.
@@ -46,7 +49,7 @@ public class Message {
         this.photoUrl = photoUrl;
     }
 
-    public long getTime(){return messageTime;}
+    public long getMessageTime(){return messageTime;}
 
     public void setMessageTime(long messageTime){this.messageTime=messageTime;}
 }
